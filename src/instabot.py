@@ -15,6 +15,7 @@ import sys
 import sqlite3
 import time
 import requests
+import instaloader
 from .sql_updates import check_and_update, check_already_liked
 from .sql_updates import check_already_followed, check_already_unfollowed
 from .sql_updates import insert_media, insert_username, insert_unfollow_count
@@ -23,6 +24,7 @@ from .sql_updates import get_username_random, get_username_to_unfollow_random
 from .sql_updates import check_and_insert_user_agent
 from fake_useragent import UserAgent
 import re
+
 
 class InstaBot:
     """
@@ -158,7 +160,8 @@ class InstaBot:
                  user_blacklist={},
                  tag_blacklist=[],
                  unwanted_username_list=[],
-                 unfollow_whitelist=[]):
+                 unfollow_whitelist=[],
+                 instaload=instaloader.Instaloader()):
 
         self.database_name = database_name
         self.follows_db = sqlite3.connect(database_name, timeout=0, isolation_level=None)
@@ -284,13 +287,16 @@ class InstaBot:
         })
 
         r = self.s.get(self.url)
-        self.s.headers.update({'X-CSRFToken': r.cookies['csrftoken']})
+        # self.s.headers.update({'X-CSRFToken': r.cookies['csrftoken']})
+        csrf_token = re.search('(?<=\"csrf_token\":\")\w+', r.text).group(0)
+        self.s.headers.update({'X-CSRFToken': csrf_token})
+
         time.sleep(5 * random.random())
         login = self.s.post(
             self.url_login, data=self.login_post, allow_redirects=True)
         self.s.headers.update({'X-CSRFToken': login.cookies['csrftoken']})
         self.csrftoken = login.cookies['csrftoken']
-        #ig_vw=1536; ig_pr=1.25; ig_vh=772;  ig_or=landscape-primary;
+        # ig_vw=1536; ig_pr=1.25; ig_vh=772;  ig_or=landscape-primary;
         self.s.cookies['ig_vw'] = '1536'
         self.s.cookies['ig_pr'] = '1.25'
         self.s.cookies['ig_vh'] = '772'
@@ -396,15 +402,18 @@ class InstaBot:
     def get_instagram_url_from_media_id(self, media_id, url_flag=True, only_code=None):
         """ Get Media Code or Full Url from Media ID Thanks to Nikished """
         media_id = int(media_id)
-        if url_flag is False: return ""
+        if url_flag is False:
+            return ""
         else:
             alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
             shortened_id = ''
             while media_id > 0:
                 media_id, idx = divmod(media_id, 64)
                 shortened_id = alphabet[idx] + shortened_id
-            if only_code: return shortened_id
-            else: return 'instagram.com/p/' + shortened_id + '/'
+            if only_code:
+                return shortened_id
+            else:
+                return 'instagram.com/p/' + shortened_id + '/'
 
     def get_username_by_media_id(self, media_id):
         """ Get username by media ID Thanks to Nikished """
@@ -427,18 +436,26 @@ class InstaBot:
             else:
                 return ""
 
+    # def get_username_by_user_id(self, user_id):
+    #     """ Get username by user_id """
+    #     if self.login_status:
+    #         try:
+    #             url_info = self.api_user_detail % user_id
+    #             r = self.s.get(url_info, headers="")
+    #             all_data = json.loads(r.text)
+    #             username = all_data["user"]["username"]
+    #             return username
+    #         except:
+    #             logging.exception("Except on get_username_by_user_id")
+    #             return False
+    #     else:
+    #         return False
+
     def get_username_by_user_id(self, user_id):
-        """ Get username by user_id """
         if self.login_status:
-            try:
-                url_info = self.api_user_detail % user_id
-                r = self.s.get(url_info, headers="")
-                all_data = json.loads(r.text)
-                username = all_data["user"]["username"]
-                return username
-            except:
-                logging.exception("Except on get_username_by_user_id")
-                return False
+            profile = instaloader.Profile.from_id(self.instaload_obj.context, user_id)
+            username = profile.username
+            return username
         else:
             return False
 
@@ -479,22 +496,22 @@ class InstaBot:
                         l_c = self.media_by_tag[i]['node']['edge_liked_by']['count']
                         if ((l_c <= self.media_max_like and
                              l_c >= self.media_min_like) or
-                            (self.media_max_like == 0 and
-                             l_c >= self.media_min_like) or
-                            (self.media_min_like == 0 and
-                             l_c <= self.media_max_like) or
-                            (self.media_min_like == 0 and
-                             self.media_max_like == 0)):
+                                (self.media_max_like == 0 and
+                                 l_c >= self.media_min_like) or
+                                (self.media_min_like == 0 and
+                                 l_c <= self.media_max_like) or
+                                (self.media_min_like == 0 and
+                                 self.media_max_like == 0)):
                             for blacklisted_user_name, blacklisted_user_id in self.user_blacklist.items(
                             ):
                                 if self.media_by_tag[i]['node']['owner'][
-                                        'id'] == blacklisted_user_id:
+                                    'id'] == blacklisted_user_id:
                                     self.write_log(
                                         "Not liking media owned by blacklisted user: "
                                         + blacklisted_user_name)
                                     return False
                             if self.media_by_tag[i]['node']['owner'][
-                                    'id'] == self.user_id:
+                                'id'] == self.user_id:
                                 self.write_log(
                                     "Keep calm - It's your own media ;)")
                                 return False
@@ -505,7 +522,7 @@ class InstaBot:
                                 if (len(self.media_by_tag[i]['node']['edge_media_to_caption']['edges']) > 1):
                                     caption = self.media_by_tag[i]['node']['edge_media_to_caption'][
                                         'edges'][0]['node']['text'].encode(
-                                            'ascii', errors='ignore')
+                                        'ascii', errors='ignore')
                                     tag_blacklist = set(self.tag_blacklist)
                                     if sys.version_info[0] == 3:
                                         tags = {
@@ -766,14 +783,14 @@ class InstaBot:
 
     def new_auto_mod_follow(self):
         if time.time() > self.next_iteration["Follow"] and \
-                        self.follow_per_day != 0 and len(self.media_by_tag) > 0:
+                self.follow_per_day != 0 and len(self.media_by_tag) > 0:
             if self.media_by_tag[0]['node']["owner"]["id"] == self.user_id:
                 self.write_log("Keep calm - It's your own profile ;)")
                 return
             if check_already_followed(self, user_id=self.media_by_tag[0]['node']["owner"]["id"]) == 1:
                 self.write_log("Already followed before " + self.media_by_tag[0]['node']["owner"]["id"])
                 self.next_iteration["Follow"] = time.time() + \
-                                                self.add_time(self.follow_delay/2)
+                                                self.add_time(self.follow_delay / 2)
                 return
             log_string = "Trying to follow: %s" % (
                 self.media_by_tag[0]['node']["owner"]["id"])
@@ -792,7 +809,7 @@ class InstaBot:
                 self.write_log(log_string)
                 self.auto_unfollow()
                 self.next_iteration["Unfollow"] = time.time() + \
-                                                    self.add_time(self.unfollow_delay)
+                                                  self.add_time(self.unfollow_delay)
             if self.bot_mode == 1:
                 unfollow_protocol(self)
 
@@ -882,7 +899,9 @@ class InstaBot:
                         insert_unfollow_count(self, user_id=current_id)
                         time.sleep(3)
                         return False
-                    all_data = json.loads(re.search('window._sharedData = (.*?);</script>', r.text, re.DOTALL).group(1))['entry_data']['ProfilePage'][0]
+                    all_data = \
+                        json.loads(re.search('window._sharedData = (.*?);</script>', r.text, re.DOTALL).group(1))[
+                            'entry_data']['ProfilePage'][0]
 
                     user_info = all_data['graphql']['user']
                     i = 0
@@ -956,7 +975,7 @@ class InstaBot:
                 self.write_log(current_user)
                 self.unfollow(current_id)
                 # don't insert unfollow count as it is done now inside unfollow()
-                #insert_unfollow_count(self, user_id=current_id)
+                # insert_unfollow_count(self, user_id=current_id)
             elif self.is_following is not True:
                 # we are not following this account, hence we unfollowed it, let's keep track
                 insert_unfollow_count(self, user_id=current_id)
@@ -993,7 +1012,7 @@ class InstaBot:
         if self.log_mod == 0:
             try:
                 now_time = datetime.datetime.now()
-                print(now_time.strftime("%d.%m.%Y_%H:%M")  + " " + log_text)
+                print(now_time.strftime("%d.%m.%Y_%H:%M") + " " + log_text)
             except UnicodeEncodeError:
                 print("Your text has unicode problem!")
         elif self.log_mod == 1:
