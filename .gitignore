@@ -97,3 +97,6 @@ ENV/
 # IDEs
 .idea/
 *.iml
+
+# Credentials
+credentials.py
