@@ -14,6 +14,8 @@ import credentials
 bot = InstaBot(
     login=credentials.username,
     password=credentials.pw,
+    start_at_h=0,
+    end_at_h=0,
     like_per_day=1000,
     comments_per_day=0,
     tag_list=['graffiti', 'bombing', 'montana', 'art', 'streetart', 'street', 'spray', 'acab', 'spraycan', 'mtn',
