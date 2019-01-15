@@ -10,12 +10,15 @@ from src.follow_protocol import follow_protocol
 from src.unfollow_protocol import unfollow_protocol
 
 import credentials
+import random
 
 bot = InstaBot(
     login=credentials.username,
     password=credentials.pw,
-    # start_at_h=0,
-    # end_at_h=0,
+    start_at_h=random.randint(16, 18),
+    start_at_m=random.randint(0, 59),
+    end_at_h=random.choice([23, 0, 1]),
+    end_at_m=random.randint(1, 59),
     like_per_day=1000,
     comments_per_day=0,
     # tag_list=['graffiti', 'bombing', 'montana', 'art', 'streetart', 'street', 'spray', 'acab', 'spraycan', 'mtn',
